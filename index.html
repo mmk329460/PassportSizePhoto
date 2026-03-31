@@ -1,0 +1,154 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Passport Photo Generator</title>
+
+    <!-- AI Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-pix"></script>
+
+    <style>
+        body {
+            text-align: center;
+            font-family: Arial;
+            margin-top: 20px;
+        }
+        canvas {
+            border: 2px solid black;
+            margin-top: 20px;
+        }
+        button {
+            margin: 10px;
+            padding: 10px 20px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+<h2>Passport Photo Generator (AI Background Remove)</h2>
+
+<input type="file" id="upload" accept="image/*">
+<br>
+
+<p id="status">Model loading... please wait ⏳</p>
+
+<canvas id="canvas"></canvas>
+<br>
+
+<button onclick="downloadImage()">Download</button>
+<button onclick="printImage()">Print</button>
+
+<script>
+let net;
+
+// 🔥 Load AI model
+async function loadModel(){
+    net = await bodyPix.load();
+    document.getElementById("status").innerText = "Model loaded ✅ Upload photo";
+}
+loadModel();
+
+// 📤 Upload image
+document.getElementById("upload").addEventListener("change", async function(e){
+    const file = e.target.files[0];
+    if(!file) return;
+
+    document.getElementById("status").innerText = "Processing... ⏳";
+
+    const img = new Image();
+    img.src = URL.createObjectURL(file);
+
+    img.onload = async function(){
+
+        // 🔥 AI background remove
+        const segmentation = await net.segmentPerson(img);
+
+        const tempCanvas = document.createElement("canvas");
+        tempCanvas.width = img.width;
+        tempCanvas.height = img.height;
+        const tempCtx = tempCanvas.getContext("2d");
+
+        tempCtx.drawImage(img, 0, 0);
+
+        let imgData = tempCtx.getImageData(0,0,img.width,img.height);
+
+        for(let i=0;i<segmentation.data.length;i++){
+            if(segmentation.data[i] === 0){
+                imgData.data[i*4+3] = 0; // remove background
+            }
+        }
+
+        tempCtx.putImageData(imgData,0,0);
+
+        // 🎯 Passport size
+        const canvas = document.getElementById("canvas");
+        const ctx = canvas.getContext("2d");
+
+        const width = 413;
+        const height = 531;
+
+        canvas.width = width * 2;
+        canvas.height = height * 3;
+
+        // white background
+        ctx.fillStyle = "white";
+        ctx.fillRect(0,0,canvas.width,canvas.height);
+
+        // center crop
+        let ratio = Math.max(width/img.width, height/img.height);
+        let newWidth = img.width * ratio;
+        let newHeight = img.height * ratio;
+
+        let x = (newWidth - width)/2;
+        let y = (newHeight - height)/2;
+
+        // draw 6 photos
+        for(let i=0;i<3;i++){
+            for(let j=0;j<2;j++){
+                ctx.drawImage(
+                    tempCanvas,
+                    -x + j*width,
+                    -y + i*height,
+                    newWidth,
+                    newHeight
+                );
+            }
+        }
+
+        document.getElementById("status").innerText = "Done ✅";
+    }
+});
+
+// 📥 Download
+function downloadImage(){
+    const canvas = document.getElementById("canvas");
+
+    if(canvas.width === 0){
+        alert("Pehle photo upload karo!");
+        return;
+    }
+
+    const link = document.createElement("a");
+    link.download = "passport.jpg";
+    link.href = canvas.toDataURL();
+    link.click();
+}
+
+// 🖨️ Print
+function printImage(){
+    const canvas = document.getElementById("canvas");
+
+    if(canvas.width === 0){
+        alert("Pehle photo upload karo!");
+        return;
+    }
+
+    let win = window.open("");
+    win.document.write("<img src='"+canvas.toDataURL()+"' onload='window.print();window.close()'>");
+}
+</script>
+
+</body>
+</html>
